@@ -15,16 +15,15 @@ import chardet
 import joblib
 from os.path import join, dirname, abspath
 
-# Загрузка стоп-слов
+# Загрузка стоп-слов один раз при инициализации класса
 nltk.download('stopwords')
-stop_words = set(stopwords.words('russian'))
 
 class XGBoostTextClassifier:
     def __init__(self, dataset_path=None, model_path=None):
         self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
         self.model_path = model_path or 'xgboost_model.pkl'
         self.pipeline = None
-        self.stop_words = stop_words
+        self.stop_words = set(stopwords.words('russian'))
 
     def preprocess_text(self, text):
         text = re.sub(r"[^а-яА-Яa-zA-Z0-9.,!?\s]", "", text)  # Удаление лишних символов
@@ -44,7 +43,7 @@ class XGBoostTextClassifier:
         texts, labels = self.load_data()
         texts = [self.preprocess_text(t) for t in texts]
         pipeline = Pipeline(steps=[
-            ('cleaner', FunctionTransformer(lambda x: [self.preprocess_text(t) for t in x], validate=False)),
+            ('cleaner', FunctionTransformer(self.preprocess_text, validate=False)),
             ('tfidf', TfidfVectorizer(max_features=5000)),  # Ограничение количества признаков
             ('classifier', XGBClassifier(random_state=42))
         ])
