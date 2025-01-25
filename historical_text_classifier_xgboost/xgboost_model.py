@@ -15,6 +15,7 @@ import chardet
 import joblib
 from os.path import join, dirname, abspath
 
+# Загрузка стоп-слов один раз при инициализации класса
 nltk.download('stopwords')
 stop_words = set(stopwords.words('russian'))
 
@@ -25,12 +26,13 @@ class XGBoostTextClassifier:
         self.model_path = model_path or 'xgboost_model.pkl'
         self.pipeline = None
         self.best_params = None
+        self.stop_words = stop_words  # Используем уже загруженные стоп-слова
 
     def preprocess_text(self, text):
         text = re.sub(r"[^а-яА-Яa-zA-Z0-9.,!?\s]", "", text)  # Удаление лишних символов
         text = text.lower()  # Приведение к нижнему регистру
         words = text.split()
-        words = [word for word in words if word not in stop_words]  # Удаление стоп-слов
+        words = [word for word in words if word not in self.stop_words]  # Удаление стоп-слов
         return ' '.join(words)
 
     def load_data(self):
@@ -45,7 +47,7 @@ class XGBoostTextClassifier:
         texts = [self.preprocess_text(t) for t in texts]
 
         pipeline = Pipeline(steps=[
-            ('cleaner', FunctionTransformer(lambda x: [self.preprocess_text(t) for t in x], validate=False)),
+            ('cleaner', FunctionTransformer(self.preprocess_text_batch, validate=False)),
             ('tfidf', TfidfVectorizer(max_features=5000)),  # Ограничение количества признаков
             ('classifier', XGBClassifier(random_state=42))
         ])
@@ -63,6 +65,9 @@ class XGBoostTextClassifier:
         self.pipeline = grid_search.best_estimator_
         self.best_params = grid_search.best_params_
         self.save_model()
+
+    def preprocess_text_batch(self, texts):
+        return [self.preprocess_text(t) for t in texts]
 
     def save_model(self):
         joblib.dump((self.pipeline, self.best_params), self.model_path)
@@ -120,7 +125,7 @@ class XGBoostTextClassifier:
     def extract_valuable_passages(self, input_text, threshold=0.5, min_length=10):
         paragraphs = input_text.split("\n")
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
-        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in stop_words)]
+        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.stop_words)]
         preprocessed_paragraphs = [self.preprocess_text(p) for p in paragraphs]
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
