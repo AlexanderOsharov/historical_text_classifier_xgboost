@@ -19,6 +19,7 @@ import joblib
 nltk.download('stopwords')
 stop_words = set(stopwords.words('russian'))
 
+
 class Preprocessor:
     def __init__(self, stop_words):
         self.stop_words = stop_words
@@ -32,6 +33,7 @@ class Preprocessor:
         words = text.split()
         words = [word for word in words if word not in self.stop_words]  # Удаление стоп-слов
         return ' '.join(words)
+
 
 class XGBoostTextClassifier:
     def __init__(self, dataset_path=None, model_path=None):
@@ -94,7 +96,8 @@ class XGBoostTextClassifier:
         # Матрица ошибок
         cm = confusion_matrix(y_test, y_pred)
         plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Twaddle', 'Historical Background'], yticklabels=['Twaddle', 'Historical Background'])
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Twaddle', 'Historical Background'],
+                    yticklabels=['Twaddle', 'Historical Background'])
         plt.xlabel('Предсказанные значения')
         plt.ylabel('Фактические значения')
         plt.title('Матрица ошибок')
@@ -119,7 +122,17 @@ class XGBoostTextClassifier:
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
         paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in stop_words)]
         preprocessed_paragraphs = self.preprocessor(paragraphs)
-        paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
+
+        # Проверка, что есть предобработанные абзацы
+        if not preprocessed_paragraphs:
+            return []
+
+        # Фильтрация пустых абзацев после предобработки
+        non_empty_preprocessed_paragraphs = [p for p in preprocessed_paragraphs if p]
+        if not non_empty_preprocessed_paragraphs:
+            return []
+
+        paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(non_empty_preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
         results = [(para, prob) for para, prob in zip(paragraphs, probabilities) if prob >= threshold]
         return results
