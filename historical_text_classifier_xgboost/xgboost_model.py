@@ -15,7 +15,7 @@ import chardet
 from os.path import join, dirname, abspath
 import joblib
 
-# Загрузка стоп-слов
+# Загрузка стоп-слов один раз
 nltk.download('stopwords')
 stop_words = set(stopwords.words('russian'))
 
@@ -23,7 +23,10 @@ class Preprocessor:
     def __init__(self, stop_words):
         self.stop_words = stop_words
 
-    def __call__(self, text):
+    def __call__(self, texts):
+        return [self.preprocess_text(text) for text in texts]
+
+    def preprocess_text(self, text):
         text = re.sub(r"[^а-яА-Яa-zA-Z0-9.,!?\s]", "", text)  # Удаление лишних символов
         text = text.lower()  # Приведение к нижнему регистру
         words = text.split()
@@ -35,6 +38,7 @@ class XGBoostTextClassifier:
         self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
         self.model_path = model_path or 'xgboost_model.pkl'
         self.pipeline = None
+        self.preprocessor = Preprocessor(stop_words)
 
     def load_data(self):
         with open(self.dataset_path, 'r', encoding='utf-8') as f:
@@ -45,9 +49,8 @@ class XGBoostTextClassifier:
 
     def train(self):
         texts, labels = self.load_data()
-        preprocessor = Preprocessor(stop_words)
         pipeline = Pipeline(steps=[
-            ('cleaner', FunctionTransformer(preprocessor, validate=False)),
+            ('cleaner', FunctionTransformer(self.preprocessor, validate=False)),
             ('tfidf', TfidfVectorizer(max_features=5000)),
             ('classifier', XGBClassifier(random_state=42))
         ])
@@ -57,7 +60,7 @@ class XGBoostTextClassifier:
             'classifier__learning_rate': [0.01, 0.1],
             'classifier__max_depth': [3, 6, 9]
         }
-        grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+        grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1, error_score='raise')
         grid_search.fit(texts, labels)
         self.pipeline = grid_search.best_estimator_
         self.save_model()
@@ -71,14 +74,14 @@ class XGBoostTextClassifier:
     def predict(self, text):
         if not self.pipeline:
             self.load_model()
-        preprocessed_text = Preprocessor(stop_words)(text)
-        return self.pipeline.predict([preprocessed_text])[0]
+        preprocessed_text = self.preprocessor([text])
+        return self.pipeline.predict(preprocessed_text)[0]
 
     def predict_proba(self, text):
         if not self.pipeline:
             self.load_model()
-        preprocessed_text = Preprocessor(stop_words)(text)
-        return self.pipeline.predict_proba([preprocessed_text])[0]
+        preprocessed_text = self.preprocessor([text])
+        return self.pipeline.predict_proba(preprocessed_text)[0]
 
     def evaluate(self):
         texts, labels = self.load_data()
@@ -115,7 +118,7 @@ class XGBoostTextClassifier:
         paragraphs = input_text.split("\n")
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
         paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in stop_words)]
-        preprocessed_paragraphs = [Preprocessor(stop_words)(p) for p in paragraphs]
+        preprocessed_paragraphs = self.preprocessor(paragraphs)
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
         results = [(para, prob) for para, prob in zip(paragraphs, probabilities) if prob >= threshold]

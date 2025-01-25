@@ -11,7 +11,8 @@ setup(
         'seaborn',
         'matplotlib',
         'chardet',
-        'nltk'
+        'nltk',
+        'requests'
     ],
     package_data={
         'historical_text_classifier_xgboost': ['data/dataset.json']
