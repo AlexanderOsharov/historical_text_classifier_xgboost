@@ -34,6 +34,9 @@ class XGBoostTextClassifier:
         words = [word for word in words if word not in self.stop_words]  # Удаление стоп-слов
         return ' '.join(words)
 
+    def preprocess_texts(self, texts):
+        return [self.preprocess_text(text) for text in texts]
+
     def load_data(self):
         with open(self.dataset_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -44,7 +47,7 @@ class XGBoostTextClassifier:
     def train(self):
         texts, labels = self.load_data()
         pipeline = Pipeline(steps=[
-            ('cleaner', FunctionTransformer(lambda x: [self.preprocess_text(t) for t in x], validate=False)),
+            ('cleaner', FunctionTransformer(self.preprocess_texts, validate=False)),
             ('tfidf', TfidfVectorizer(max_features=5000)),  # Ограничение количества признаков
             ('classifier', XGBClassifier(random_state=42))
         ])
