@@ -16,7 +16,7 @@ import joblib
 from os.path import join, dirname, abspath
 
 # Загрузка стоп-слов один раз при инициализации класса
-nltk.download('stopwords')
+nltk.download('stopwords', quiet=True)  # Отключаем сообщения о загрузке
 
 class TextPreprocessor(BaseEstimator, TransformerMixin):
     def __init__(self, stop_words):
@@ -62,7 +62,7 @@ class XGBoostTextClassifier:
             'classifier__learning_rate': [0.01, 0.1],
             'classifier__max_depth': [3, 6, 9]
         }
-        grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+        grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1, error_score='raise')
         grid_search.fit(texts, labels)
         self.pipeline = grid_search.best_estimator_
         self.save_model()
@@ -121,6 +121,8 @@ class XGBoostTextClassifier:
         paragraphs = input_text.split("\n")
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
         paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.stop_words)]
+        if not paragraphs:
+            return []  # Возвращаем пустой список, если нет подходящих абзацев
         preprocessed_paragraphs = [self.preprocess_text(p) for p in paragraphs]
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
