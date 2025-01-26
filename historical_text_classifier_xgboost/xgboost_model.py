@@ -1,6 +1,7 @@
 import json
 import re
 import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc
@@ -8,7 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
 from nltk.corpus import stopwords
 import nltk
 import chardet
@@ -18,12 +18,15 @@ from os.path import join, dirname, abspath
 # Загрузка стоп-слов один раз при инициализации класса
 nltk.download('stopwords')
 
-class XGBoostTextClassifier:
-    def __init__(self, dataset_path=None, model_path=None):
-        self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
-        self.model_path = model_path or 'xgboost_model.pkl'
-        self.pipeline = None
-        self.stop_words = set(stopwords.words('russian'))
+class TextPreprocessor(BaseEstimator, TransformerMixin):
+    def __init__(self, stop_words):
+        self.stop_words = stop_words
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return [self.preprocess_text(text) for text in X]
 
     def preprocess_text(self, text):
         text = re.sub(r"[^а-яА-Яa-zA-Z0-9.,!?\s]", "", text)  # Удаление лишних символов
@@ -31,6 +34,13 @@ class XGBoostTextClassifier:
         words = text.split()
         words = [word for word in words if word not in self.stop_words]  # Удаление стоп-слов
         return ' '.join(words)
+
+class XGBoostTextClassifier:
+    def __init__(self, dataset_path=None, model_path=None):
+        self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
+        self.model_path = model_path or 'xgboost_model.pkl'
+        self.pipeline = None
+        self.stop_words = set(stopwords.words('russian'))
 
     def load_data(self):
         with open(self.dataset_path, 'r', encoding='utf-8') as f:
@@ -41,9 +51,8 @@ class XGBoostTextClassifier:
 
     def train(self):
         texts, labels = self.load_data()
-        texts = [self.preprocess_text(t) for t in texts]
         pipeline = Pipeline(steps=[
-            ('cleaner', FunctionTransformer(self.preprocess_text, validate=False)),
+            ('cleaner', TextPreprocessor(stop_words=self.stop_words)),
             ('tfidf', TfidfVectorizer(max_features=5000)),  # Ограничение количества признаков
             ('classifier', XGBClassifier(random_state=42))
         ])
@@ -81,7 +90,6 @@ class XGBoostTextClassifier:
     def evaluate(self):
         self.load_model()
         texts, labels = self.load_data()
-        texts = [self.preprocess_text(t) for t in texts]
         y_pred = self.pipeline.predict(texts)
         y_prob = self.pipeline.predict_proba(texts)[:, 1]
         print("Accuracy:", accuracy_score(labels, y_pred))
@@ -153,6 +161,5 @@ class XGBoostTextClassifier:
         texts, labels = self.load_data()
         texts.extend(additional_texts)
         labels.extend(additional_labels)
-        texts = [self.preprocess_text(t) for t in texts]
         self.pipeline.fit(texts, labels)
         self.save_model()
