@@ -121,26 +121,35 @@ class XGBoostTextClassifier:
         plt.legend(loc="lower right")
         plt.show()
 
-    def extract_valuable_passages(self, input_text, threshold=0.5, min_length=10):
+    def extract_valuable_passages(self, input_text, threshold=0.5, min_length=5):  # Уменьшаем min_length до 5
         paragraphs = input_text.split("\n")
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
-        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.stop_words)]
 
         # Добавляем логи для отладки
-        print(f"Исходное количество абзацев: {len(input_text.split('\n'))}")
-        print(f"Абзацы после фильтрации по минимальной длине: {len(paragraphs)}")
-        print(f"Абзацы после фильтрации по ключевым словам: {len(paragraphs)}")
+        print(f"Исходное количество абзацев: {len(paragraphs)}")
+        print(f"Абзацы до фильтрации по ключевым словам:")
+        for i, p in enumerate(paragraphs):
+            print(f"Абзац {i + 1}: {p}")
+
+        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.stop_words)]
+
+        print(f"Абзацы после фильтрации по ключевым словам:")
+        for i, p in enumerate(paragraphs):
+            print(f"Абзац {i + 1}: {p}")
 
         if not paragraphs:
             return []  # Возвращаем пустой список, если нет подходящих абзацев
 
         preprocessed_paragraphs = [self.preprocess_text(p) for p in paragraphs]
+
+        print(f"Абзацы после предобработки:")
+        for i, p in enumerate(preprocessed_paragraphs):
+            print(f"Абзац {i + 1}: {p}")
+
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
         results = [(para, prob) for para, prob in zip(paragraphs, probabilities) if prob >= threshold]
 
-        # Добавляем логи для отладки
-        print(f"Абзацы после предобработки: {len(preprocessed_paragraphs)}")
         print(f"Абзацы с вероятностью >= {threshold}: {len(results)}")
 
         return results
