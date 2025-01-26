@@ -117,13 +117,23 @@ class XGBoostTextClassifier:
         paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]  # Фильтр коротких абзацев
         paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.keywords_to_exclude)]  # Фильтр по ключевым словам
 
+        # Добавляем логи для отладки
+        print(f"Исходное количество абзацев: {len(input_text.split('\n'))}")
+        print(f"Абзацы после фильтрации по минимальной длине: {len(paragraphs)}")
+        print(f"Абзацы после фильтрации по ключевым словам: {len(paragraphs)}")
+
         if not paragraphs:
             return []  # Возвращаем пустой список, если нет подходящих абзацев
 
-        preprocessed_paragraphs = [self.preprocess_text(p) for p in paragraphs]
+        preprocessed_paragraphs = self.preprocess_texts(paragraphs)
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
         probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]  # Вероятности класса "1"
         results = [(para, prob) for para, prob in zip(paragraphs, probabilities) if prob >= threshold]
+
+        # Добавляем логи для отладки
+        print(f"Абзацы после предобработки: {len(preprocessed_paragraphs)}")
+        print(f"Абзацы с вероятностью >= {threshold}: {len(results)}")
+
         return results
 
     def fetch_data_from_wikipedia(self, query, num_results=5):
