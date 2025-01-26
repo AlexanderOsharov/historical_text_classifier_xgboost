@@ -79,12 +79,12 @@ class XGBoostTextClassifier:
 
     def predict(self, text):
         self.load_model()
-        preprocessed_text = [self.preprocess_text(text)]
+        preprocessed_text = [text]  # Не нужно вызывать preprocess_text здесь
         return self.pipeline.predict(preprocessed_text)[0]
 
     def predict_proba(self, text):
         self.load_model()
-        preprocessed_text = [self.preprocess_text(text)]
+        preprocessed_text = [text]  # Не нужно вызывать preprocess_text здесь
         return self.pipeline.predict_proba(preprocessed_text)[0]
 
     def evaluate(self):
