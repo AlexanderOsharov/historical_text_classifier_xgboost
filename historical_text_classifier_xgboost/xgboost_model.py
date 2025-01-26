@@ -14,6 +14,7 @@ import nltk
 import chardet
 import joblib
 from os.path import join, dirname, abspath
+import requests
 
 # Загрузка стоп-слов один раз при инициализации класса
 nltk.download('stopwords', quiet=True)  # Отключаем сообщения о загрузке
