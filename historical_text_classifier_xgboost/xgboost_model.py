@@ -1,7 +1,6 @@
 import json
 import re
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc
@@ -9,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 from nltk.corpus import stopwords
 import nltk
 import chardet
@@ -19,16 +19,13 @@ import requests
 # Загрузка стоп-слов один раз при инициализации класса
 nltk.download('stopwords', quiet=True)  # Отключаем сообщения о загрузке
 
-
-class TextPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self, stop_words):
-        self.stop_words = stop_words
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        return [self.preprocess_text(text) for text in X]
+class XGBoostTextClassifier:
+    def __init__(self, dataset_path=None, model_path=None):
+        self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
+        self.model_path = model_path or 'xgboost_model.pkl'
+        self.pipeline = None
+        self.stop_words = set(stopwords.words('russian'))
+        self.keywords_to_exclude = ["акт", "лист", "приказ", "распоряжение", "№"]
 
     def preprocess_text(self, text):
         text = re.sub(r"[^а-яА-Яa-zA-Z0-9.,!?\s]", "", text)  # Удаление лишних символов
@@ -36,14 +33,6 @@ class TextPreprocessor(BaseEstimator, TransformerMixin):
         words = text.split()
         words = [word for word in words if word not in self.stop_words]  # Удаление стоп-слов
         return ' '.join(words)
-
-
-class XGBoostTextClassifier:
-    def __init__(self, dataset_path=None, model_path=None):
-        self.dataset_path = dataset_path or join(dirname(abspath(__file__)), 'data', 'dataset.json')
-        self.model_path = model_path or 'xgboost_model.pkl'
-        self.pipeline = None
-        self.stop_words = set(stopwords.words('russian'))
 
     def load_data(self):
         with open(self.dataset_path, 'r', encoding='utf-8') as f:
@@ -55,7 +44,7 @@ class XGBoostTextClassifier:
     def train(self):
         texts, labels = self.load_data()
         pipeline = Pipeline(steps=[
-            ('cleaner', TextPreprocessor(stop_words=self.stop_words)),
+            ('cleaner', FunctionTransformer(lambda x: [self.preprocess_text(t) for t in x], validate=False)),
             ('tfidf', TfidfVectorizer(max_features=5000)),  # Ограничение количества признаков
             ('classifier', XGBClassifier(random_state=42))
         ])
@@ -100,8 +89,7 @@ class XGBoostTextClassifier:
         # Матрица ошибок
         cm = confusion_matrix(labels, y_pred)
         plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Twaddle', 'Historical Background'],
-                    yticklabels=['Twaddle', 'Historical Background'])
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Twaddle', 'Historical Background'], yticklabels=['Twaddle', 'Historical Background'])
         plt.xlabel('Предсказанные значения')
         plt.ylabel('Фактические значения')
         plt.title('Матрица ошибок')
@@ -121,37 +109,18 @@ class XGBoostTextClassifier:
         plt.legend(loc="lower right")
         plt.show()
 
-    def extract_valuable_passages(self, input_text, threshold=0.5, min_length=5):  # Уменьшаем min_length до 5
+    def extract_valuable_passages(self, input_text, threshold=0.5, min_length=10):
         paragraphs = input_text.split("\n")
-        paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]
-
-        # Добавляем логи для отладки
-        print(f"Исходное количество абзацев: {len(paragraphs)}")
-        print(f"Абзацы до фильтрации по ключевым словам:")
-        for i, p in enumerate(paragraphs):
-            print(f"Абзац {i + 1}: {p}")
-
-        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.stop_words)]
-
-        print(f"Абзацы после фильтрации по ключевым словам:")
-        for i, p in enumerate(paragraphs):
-            print(f"Абзац {i + 1}: {p}")
+        paragraphs = [p.strip() for p in paragraphs if len(p.strip().split()) >= min_length]  # Фильтр коротких абзацев
+        paragraphs = [p for p in paragraphs if not any(kw in p.lower() for kw in self.keywords_to_exclude)]  # Фильтр по ключевым словам
 
         if not paragraphs:
             return []  # Возвращаем пустой список, если нет подходящих абзацев
 
         preprocessed_paragraphs = [self.preprocess_text(p) for p in paragraphs]
-
-        print(f"Абзацы после предобработки:")
-        for i, p in enumerate(preprocessed_paragraphs):
-            print(f"Абзац {i + 1}: {p}")
-
         paragraph_vectors = self.pipeline.named_steps['tfidf'].transform(preprocessed_paragraphs)
-        probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]
+        probabilities = self.pipeline.predict_proba(paragraph_vectors)[:, 1]  # Вероятности класса "1"
         results = [(para, prob) for para, prob in zip(paragraphs, probabilities) if prob >= threshold]
-
-        print(f"Абзацы с вероятностью >= {threshold}: {len(results)}")
-
         return results
 
     def fetch_data_from_wikipedia(self, query, num_results=5):
